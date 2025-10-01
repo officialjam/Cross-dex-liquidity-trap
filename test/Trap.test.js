@@ -1,41 +1,47 @@
-const { expect } = require('chai');
-const { ethers } = require('hardhat');
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
 
-describe('CrossDexLiquidityTrap', function () {
+describe("CrossDexLiquidityTrap", function () {
   let Trap;
+
   before(async () => {
-    Trap = await ethers.getContractFactory('CrossDexLiquidityTrap');
+    Trap = await ethers.getContractFactory("CrossDexLiquidityTrap");
   });
 
-  it('collect returns encoded bytes', async () => {
-    const trap = await Trap.deploy();
-    await trap.deployed();
+  it("collect returns encoded bytes", async () => {
+    const trap = await Trap.deploy(); // ✅ no .deployed()
     const collected = await trap.collect();
-    expect(collected).to.be.ok;
+    expect(collected).to.be.instanceOf(Uint8Array); // ✅ ensures it's bytes
   });
 
-  it('shouldRespond returns false with insufficient data', async () => {
+  it("shouldRespond returns false with insufficient data", async () => {
     const trap = await Trap.deploy();
-    await trap.deployed();
-    const tx = await trap.shouldRespond([]);
-    expect(tx[0]).to.equal(false);
+    const [shouldTrigger, payload] = await trap.shouldRespond([]);
+    expect(shouldTrigger).to.equal(false);
+    expect(payload).to.equal("0x");
   });
 
-  it('shouldRespond logic with mocked snapshots', async () => {
+  it("shouldRespond logic with mocked snapshots", async () => {
     const trap = await Trap.deploy();
-    await trap.deployed();
 
+    // helpers for encoding
     function encodePair(r0, r1, t0, t1, ts) {
-      return ethers.utils.defaultAbiCoder.encode(['uint112','uint112','address','address','uint32'], [r0, r1, t0, t1, ts]);
+      return ethers.AbiCoder.defaultAbiCoder().encode(
+        ["uint112", "uint112", "address", "address", "uint32"],
+        [r0, r1, t0, t1, ts]
+      );
     }
 
     function encodeSnapshot(aEnc, bEnc) {
-      return ethers.utils.defaultAbiCoder.encode(['bytes','bytes'], [aEnc, bEnc]);
+      return ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes", "bytes"],
+        [aEnc, bEnc]
+      );
     }
 
-    const tokenBase = ethers.constants.AddressZero;
-    const tokenA = '0x0000000000000000000000000000000000000001';
-    const tokenB = '0x0000000000000000000000000000000000000002';
+    const tokenBase = ethers.ZeroAddress;
+    const tokenA = "0x0000000000000000000000000000000000000001";
+    const tokenB = "0x0000000000000000000000000000000000000002";
 
     const aPrev = encodePair(100000, 200000, tokenA, tokenBase, 1);
     const bPrev = encodePair(150000, 300000, tokenB, tokenBase, 1);
@@ -47,8 +53,8 @@ describe('CrossDexLiquidityTrap', function () {
 
     const data = [newSnapshot, prevSnapshot];
 
-    const res = await trap.shouldRespond(data);
-    expect(res[0]).to.be.a('boolean');
-    expect(res[1]).to.be.ok;
+    const [triggered, payload] = await trap.shouldRespond(data);
+    expect(triggered).to.be.a("boolean");
+    expect(payload).to.be.ok;
   });
 });
