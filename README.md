@@ -1,6 +1,6 @@
-# Cross-DEX Liquidity Trap — Updated (Drosera ITrap compatible)
+# Cross-DEX Liquidity Trap — Updated 
 
-This project is a PoC **Cross-DEX liquidity drain + price divergence trap** updated to match Drosera's ITrap interface and Hoodi expectations.
+This project is a PoC **Cross-DEX liquidity drain + price divergence trap** updated to match Drosera's Trap interface and Hoodi expectations.
 
 ## What was fixed / implemented
 - `collect()` is `external view returns (bytes memory)` and reads pair reserves (UniswapV2-like) and encodes snapshots.
