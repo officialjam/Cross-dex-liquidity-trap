@@ -9,7 +9,7 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
-      viaIR: true, // 👈 this is the important part
+      viaIR: true, // ✅ needed for your trap
     },
   },
 };
