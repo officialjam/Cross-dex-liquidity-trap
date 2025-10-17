@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-interface IUniswapV2Pair {
-    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
-    function token0() external view returns (address);
-    function token1() external view returns (address);
-}
+import { ITrap } from "./interfaces/ITrap.sol";
+import { IUniswapV2Pair } from "./interfaces/IUniswapV2Pair.sol";
 
-/// @title Cross-DEX Liquidity + Price Divergence Trap (Drosera ITrap-compatible)
-/// @notice PoC trap. PLEASE EDIT PAIR_A, PAIR_B and BASE constants before deploying for real tests.
-contract CrossDexLiquidityTrap {
+/// @notice Cross-DEX liquidity + price divergence trap compatible with Drosera ITrap
+contract CrossDexLiquidityTrap is ITrap {
     // ===== CONFIG (edit for PoC/testing) =====
-    address public constant PAIR_A = address(0); // set to pair A address before deploying
-    address public constant PAIR_B = address(0); // set to pair B address before deploying
-    address public constant BASE   = address(0); // set to base token (e.g., WETH) before deploying
+    // For PoC we set pair addresses as constants. In production these are provided by Drosera deployment.
+    address public constant PAIR_A = address(0);
+    address public constant PAIR_B = address(0);
+    // Use canonical WETH as default base for clarity; change if needed for testing.
+    address public constant BASE = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // thresholds in basis points (BPS)
     uint256 public constant DIVERGENCE_BPS = 2000; // 20%
@@ -21,17 +19,28 @@ contract CrossDexLiquidityTrap {
     uint256 public constant MIN_RESERVE = 1000; // minimal reserve floor (token units)
 
     // ===== Helpers =====
-    function _encodePairData(address pair) internal view returns (bytes memory) {
-        IUniswapV2Pair p = IUniswapV2Pair(pair);
-        (uint112 r0, uint112 r1, uint32 ts) = p.getReserves();
-        address t0 = p.token0();
-        address t1 = p.token1();
-        return abi.encode(r0, r1, t0, t1, ts);
+    // Safe encode that guards against address(0) and non-contract addresses
+    function _safeEncodePair(address pair) internal view returns (bytes memory out) {
+        if (pair == address(0)) {
+            return abi.encode(uint112(0), uint112(0), address(0), address(0), uint32(0));
+        }
+        uint256 size;
+        assembly { size := extcodesize(pair) }
+        if (size == 0) {
+            return abi.encode(uint112(0), uint112(0), address(0), address(0), uint32(0));
+        }
+        try IUniswapV2Pair(pair).getReserves() returns (uint112 r0, uint112 r1, uint32 ts) {
+            address t0 = IUniswapV2Pair(pair).token0();
+            address t1 = IUniswapV2Pair(pair).token1();
+            return abi.encode(r0, r1, t0, t1, ts);
+        } catch {
+            return abi.encode(uint112(0), uint112(0), address(0), address(0), uint32(0));
+        }
     }
 
     function _decodePairData(bytes memory b) internal pure returns (uint256 r0, uint256 r1, address t0, address t1, uint32 ts) {
-        (uint112 rr0, uint112 rr1, address a0, address a1, uint32 tts) = abi.decode(b, (uint112, uint112, address, address, uint32));
-        return (uint256(rr0), uint256(rr1), a0, a1, tts);
+        (uint112 d0, uint112 d1, address a0, address a1, uint32 dts) = abi.decode(b, (uint112, uint112, address, address, uint32));
+        return (uint256(d0), uint256(d1), a0, a1, dts);
     }
 
     function _liquidityDropBps(uint256 oldReserve, uint256 newReserve) internal pure returns (uint256) {
@@ -66,15 +75,15 @@ contract CrossDexLiquidityTrap {
     // ===== Drosera ITrap-compatible functions =====
 
     /// @notice collect() must be view and return abi-encoded bytes. Runner will store this (newest-first).
-    function collect() external view returns (bytes memory) {
-        bytes memory a = _encodePairData(PAIR_A);
-        bytes memory b = _encodePairData(PAIR_B);
+    function collect() external view override returns (bytes memory) {
+        bytes memory a = _safeEncodePair(PAIR_A);
+        bytes memory b = _safeEncodePair(PAIR_B);
         return abi.encode(a, b);
     }
 
     /// @notice shouldRespond(bytes[] calldata data) external pure returns (bool, bytes memory)
     /// data[0] = newest, data[1] = previous, ...
-    function shouldRespond(bytes[] calldata data) external pure returns (bool, bytes memory) {
+    function shouldRespond(bytes[] calldata data) external pure override returns (bool, bytes memory) {
         if (data.length < 2) return (false, bytes("insufficient-data"));
 
         bytes calldata newest = data[0];
